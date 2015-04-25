@@ -6,11 +6,37 @@ var Q = require('q');
 var _ = require('lodash');
 var request = require('request');
 
+var Spooky = require('spooky');
+
 var $;
 
-//Q.ninvoke(fs, 'readFile', 'page_dump')
-//  .then(scrapEntries)
-//  .catch(function (err) { throw Error(err)});
+// Load the page first
+var url = 'http://www.gelbeseiten.de/kino/berlin';
+
+var spooky = new Spooky({
+  child: {
+    transport: 'http'
+  },
+  casper: {
+    logLevel: 'debug',
+    verbose: true
+  }
+}, function (err) {
+  if (err) {
+    e = new Error('Failed to initialize SpookyJS');
+    e.details = err;
+    throw e;
+  }
+
+  spooky.start(
+    'http://en.wikipedia.org/wiki/Spooky_the_Tuff_Little_Ghost');
+  spooky.then(function () {
+    this.emit('hello', 'Hello, from ' + this.evaluate(function () {
+        return document.title;
+      }));
+  });
+  spooky.run();
+});
 
 //fs.readFile(path.resolve('page_dump'), function (err, data) {
 //  if (err) {

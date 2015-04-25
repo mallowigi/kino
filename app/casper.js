@@ -1,14 +1,31 @@
 #! casperjs
-var url = 'http://www.gelbeseiten.de/kino/berlin';
+// Libs
+var fs = require('fs');
+
+// Consts
+var url      = 'http://www.gelbeseiten.de/kino/berlin',
+    CSV_FILE = 'report.csv';
+
+// The casper
 var casper = require('casper').create({
   clientScripts: ['node_modules/jquery/dist/jquery.min.js'],
   pageSettings: {
     loadImages: false,
     loadPlugins: false
   },
-  logLevel: "info",
-  verbose: true
+  logLevel: "info"
 });
+
+// The results
+var items = [];
+
+function getItems (parseEntry) {
+  var results = [];
+  $('.teilnehmer').each(function (index, item) {
+    results.push(parseEntry(item));
+  });
+  return results;
+}
 
 function parseEntry (entryElement) {
   function parsePhone ($entry) {
@@ -16,6 +33,12 @@ function parseEntry (entryElement) {
 
     var matches = phoneNumber.match(/^([^-]+)/);
     return matches[1];
+  }
+
+  function normalizeEntry (entry) {
+    Object.keys(entry).forEach(function (key) {
+      entry[key] = entry[key].replace(/\s/g, '');
+    });
   }
 
   var $entry = $(entryElement);
@@ -48,22 +71,39 @@ function parseEntry (entryElement) {
   // Parse website
   entry.website = $entry.find('.website .text').text();
 
+  normalizeEntry(entry);
+
   return entry;
 }
 
-casper.start(url);
+function writeToCSV (item) {
+  var stream = fs.open('report.csv', 'aw');
+  stream.writeLine(JSON.stringify(item));
+  stream.flush();
+  stream.close();
+}
+
+casper.start(url, function () {
+  this.echo('Preparing environment...');
+  fs.remove(CSV_FILE);
+});
 
 casper.then(function () {
-  var results = this.evaluate(function (parseEntry) {
-    var results = [];
-    $('.teilnehmer').each(function (index, item) {
-      results.push(parseEntry(item));
-    });
-    return results;
-  }, parseEntry);
+  this.echo('Scraping website...')
+  items = this.evaluate(getItems, parseEntry);
+});
 
-  return results;
+casper.then(function () {
+  this.echo(items.length + ' items found. Writing to CSV...');
+  items.forEach(function (item) {
+    if (item) {
+      writeToCSV(item);
+    }
+  })
 })
 
-casper.run();
+casper.run(function () {
+  this.echo('Finished scraping website.');
+  this.exit();
+});
 
