@@ -1,34 +1,23 @@
-#! node
-var cheerio = require('cheerio');
-var fs = require('fs');
-var path = require('path');
-var Q = require('q');
-var _ = require('lodash');
-var request = require('request');
-
-var $;
-
-//Q.ninvoke(fs, 'readFile', 'page_dump')
-//  .then(scrapEntries)
-//  .catch(function (err) { throw Error(err)});
-
-//fs.readFile(path.resolve('page_dump'), function (err, data) {
-//  if (err) {
-//    throw Error(err);
-//  }
-//  scrapEntries(data);
-//})
-
-exports.scrapEntries = function scrapEntries (html) {
-  var results = [];
-  $ = cheerio.load(html);
-
-  $('.teilnehmer').each(function (index, entryElement) {
-    results.push(parseEntry(entryElement));
-  });
-}
+#! casperjs
+var url = 'http://www.gelbeseiten.de/kino/berlin';
+var casper = require('casper').create({
+  clientScripts: ['node_modules/jquery/dist/jquery.min.js'],
+  pageSettings: {
+    loadImages: false,
+    loadPlugins: false
+  },
+  logLevel: "info",
+  verbose: true
+});
 
 function parseEntry (entryElement) {
+  function parsePhone ($entry) {
+    var phoneNumber = $entry.find('.phone .suffix').text();
+
+    var matches = phoneNumber.match(/^([^-]+)/);
+    return matches[1];
+  }
+
   var $entry = $(entryElement);
   var entry = {};
 
@@ -62,9 +51,19 @@ function parseEntry (entryElement) {
   return entry;
 }
 
-function parsePhone ($entry) {
-  var phoneNumber = $entry.find('.phone .suffix').text();
+casper.start(url);
 
-  var matches = phoneNumber.match(/^([^-]+)/);
-  return matches[1];
-}
+casper.then(function () {
+  var results = this.evaluate(function (parseEntry) {
+    var results = [];
+    $('.teilnehmer').each(function (index, item) {
+      results.push(parseEntry(item));
+    });
+    return results;
+  }, parseEntry);
+
+  return results;
+})
+
+casper.run();
+
