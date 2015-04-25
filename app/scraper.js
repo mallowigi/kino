@@ -1,60 +1,46 @@
-#! node
-var cheerio = require('cheerio');
+#! casperjs
+// Libs
 var fs = require('fs');
-var path = require('path');
-var Q = require('q');
-var _ = require('lodash');
-var request = require('request');
 
-var Spooky = require('spooky');
+// Consts
+var url      = 'http://www.gelbeseiten.de/kino/berlin',
+    CSV_FILE = 'report.csv';
 
-var $;
-
-// Load the page first
-var url = 'http://www.gelbeseiten.de/kino/berlin';
-
-var spooky = new Spooky({
-  child: {
-    transport: 'http'
+// The casper
+var casper = require('casper').create({
+  clientScripts: ['node_modules/jquery/dist/jquery.min.js'],
+  pageSettings: {
+    loadImages: false,
+    loadPlugins: false
   },
-  casper: {
-    logLevel: 'debug',
-    verbose: true
-  }
-}, function (err) {
-  if (err) {
-    e = new Error('Failed to initialize SpookyJS');
-    e.details = err;
-    throw e;
-  }
-
-  spooky.start(
-    'http://en.wikipedia.org/wiki/Spooky_the_Tuff_Little_Ghost');
-  spooky.then(function () {
-    this.emit('hello', 'Hello, from ' + this.evaluate(function () {
-        return document.title;
-      }));
-  });
-  spooky.run();
+  logLevel: "info"
 });
 
-//fs.readFile(path.resolve('page_dump'), function (err, data) {
-//  if (err) {
-//    throw Error(err);
-//  }
-//  scrapEntries(data);
-//})
+// The results
+var items = [];
 
-exports.scrapEntries = function scrapEntries (html) {
+function getItems (parseEntry) {
   var results = [];
-  $ = cheerio.load(html);
-
-  $('.teilnehmer').each(function (index, entryElement) {
-    results.push(parseEntry(entryElement));
+  $('.teilnehmer').each(function (index, item) {
+    results.push(parseEntry(item));
   });
+  return results;
 }
 
 function parseEntry (entryElement) {
+  function parsePhone ($entry) {
+    var phoneNumber = $entry.find('.phone .suffix').text();
+
+    var matches = phoneNumber.match(/^([^-]+)/);
+    return matches[1];
+  }
+
+  function normalizeEntry (entry) {
+    Object.keys(entry).forEach(function (key) {
+      entry[key] = entry[key].replace(/\s/g, '');
+    });
+  }
+
   var $entry = $(entryElement);
   var entry = {};
 
@@ -85,12 +71,39 @@ function parseEntry (entryElement) {
   // Parse website
   entry.website = $entry.find('.website .text').text();
 
+  normalizeEntry(entry);
+
   return entry;
 }
 
-function parsePhone ($entry) {
-  var phoneNumber = $entry.find('.phone .suffix').text();
-
-  var matches = phoneNumber.match(/^([^-]+)/);
-  return matches[1];
+function writeToCSV (item) {
+  var stream = fs.open('report.csv', 'aw');
+  stream.writeLine(JSON.stringify(item));
+  stream.flush();
+  stream.close();
 }
+
+casper.start(url, function () {
+  this.echo('Preparing environment...');
+  fs.remove(CSV_FILE);
+});
+
+casper.then(function () {
+  this.echo('Scraping website...')
+  items = this.evaluate(getItems, parseEntry);
+});
+
+casper.then(function () {
+  this.echo(items.length + ' items found. Writing to CSV...');
+  items.forEach(function (item) {
+    if (item) {
+      writeToCSV(item);
+    }
+  })
+})
+
+casper.run(function () {
+  this.echo('Finished scraping website.');
+  this.exit();
+});
+
