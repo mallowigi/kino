@@ -6,12 +6,14 @@
     "url": "https://github.com/your-name/slush-atom-shell"
   },
   "dependencies": {
+    "casperjs": "^1.1.0-beta3",
     "cheerio": "^0.19.0",
     "gulp": "^3.6.2",
     "gulp-atom": "0.0.2",
     "gulp-shell": "^0.2.5",
     "lodash": "^3.7.0",
     "q": "^1.2.0",
-    "request": "^2.55.0"
+    "request": "^2.55.0",
+    "spooky": "^0.2.5"
   }
 }
