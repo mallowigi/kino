@@ -1,9 +1,0 @@
-{
-  "name"    : "kino",
-  "version" : "0.0.1",
-  "main"    : "app.js",
-  "description": "kino",
-  "repository": {
-    "url": "https://github.com/your-name/slush-atom-shell"
-  }
-}

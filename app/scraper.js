@@ -3,8 +3,11 @@
 var fs = require('fs');
 
 // Consts
-var url      = 'http://www.gelbeseiten.de/kino/berlin',
-    CSV_FILE = 'report.csv';
+var url       = 'http://www.gelbeseiten.de/kino/berlin',
+    CSV_FILE  = 'report.csv',
+    NEXT_PAGE = '.gs_seite_vor';
+
+var properties = ['name', 'address', 'postalCode', 'locality', 'branch', 'additionalInfo', 'phone', 'email', 'website'];
 
 // The casper
 var casper = require('casper').create({
@@ -17,7 +20,8 @@ var casper = require('casper').create({
 });
 
 // The results
-var items = [];
+var items         = [],
+    doneScrapping = false;
 
 function getItems (parseEntry) {
   var results = [];
@@ -29,15 +33,29 @@ function getItems (parseEntry) {
 
 function parseEntry (entryElement) {
   function parsePhone ($entry) {
-    var phoneNumber = $entry.find('.phone .suffix').text();
+    var phoneNumber1 = $entry.find('.phone .nummer').text(),
+        phoneNumber2 = $entry.find('.phone .suffix').text(),
+        phoneNumber  = phoneNumber1 + phoneNumber2;
 
     var matches = phoneNumber.match(/^([^-]+)/);
     return matches[1];
   }
 
+  function parseEmail ($entry) {
+    var emailRegex = /^(.*)(?:\.\.\.)(?:\w)/;
+    var email = $entry.find('.email .text').text();
+
+    if (emailRegex.test(email)) {
+      var matches = email.match(emailRegex);
+      return matches[1];
+    }
+
+    return email;
+  }
+
   function normalizeEntry (entry) {
     Object.keys(entry).forEach(function (key) {
-      entry[key] = entry[key].replace(/\s/g, '');
+      entry[key] = entry[key].replace(/[\s,]/g, ' ');
     });
   }
 
@@ -66,7 +84,7 @@ function parseEntry (entryElement) {
   entry.phone = parsePhone($entry);
 
   // Parse email
-  entry.email = $entry.find('.email .text').text();
+  entry.email = parseEmail($entry);
 
   // Parse website
   entry.website = $entry.find('.website .text').text();
@@ -76,25 +94,60 @@ function parseEntry (entryElement) {
   return entry;
 }
 
-function writeToCSV (item) {
+function prepareCSV () {
   var stream = fs.open('report.csv', 'aw');
-  stream.writeLine(JSON.stringify(item));
+  stream.writeLine(properties.join());
+
   stream.flush();
   stream.close();
 }
 
+function writeToCSV (item) {
+
+  function toCsv (item) {
+    var csv = [];
+
+    properties.forEach(function (key) {
+      csv.push(item[key]);
+    });
+
+    return csv.join();
+  }
+
+  var stream = fs.open('report.csv', 'aw');
+  stream.writeLine(toCsv(item));
+  stream.flush();
+  stream.close();
+}
+
+/**
+ * Scrap a page of the website
+ */
+function scrapingWebsite () {
+  this.echo('Scraping website...')
+  items = items.concat(this.evaluate(getItems, parseEntry));
+
+  // next page
+  if (casper.visible(NEXT_PAGE)) {
+    casper.echo('Next page found, scrapping next page');
+    casper.thenClick(NEXT_PAGE);
+    casper.then(scrapingWebsite);
+  }
+}
+
 casper.start(url, function () {
   this.echo('Preparing environment...');
-  fs.remove(CSV_FILE);
+  if (fs.exists(CSV_FILE)) {
+    fs.remove(CSV_FILE);
+  }
 });
 
-casper.then(function () {
-  this.echo('Scraping website...')
-  items = this.evaluate(getItems, parseEntry);
-});
+casper.then(scrapingWebsite);
 
 casper.then(function () {
   this.echo(items.length + ' items found. Writing to CSV...');
+  prepareCSV();
+
   items.forEach(function (item) {
     if (item) {
       writeToCSV(item);
